@@ -35,6 +35,7 @@
 - **Uma pista viva.** Zebras, linhas laterais, linha central pontilhada, linha de largada xadrez e um muro baixo que acompanha toda curva, tudo nítido em qualquer zoom.
 - **Roda em máquinas modestas.** O terreno é gerado em blocos enquanto você dirige, os carros são sprites pré-gerados, e o jogo reduz a própria qualidade se começar a travar.
 - **Sem arquivos externos de arte ou som.** A arte é gerada por código e o som é sintetizado com a Web Audio API.
+- **Cinco idiomas.** Inglês, português, espanhol, francês e alemão. O jogo usa o idioma do seu navegador, e a tecla <kbd>L</kbd> troca na hora.
 
 <p align="center">
   <img src="docs/screenshots/detail.jpg" alt="De perto: carros em ASCII, caixas de item e uma mina na zebra de uma curva" width="920">
@@ -57,6 +58,7 @@
 | M | Som ligado / desligado |
 | Q | Qualidade: Alta / Média / Baixa |
 | F | Mostra FPS, zoom e qualidade |
+| L | Troca o idioma (English / Português / Español / Français / Deutsch) |
 | `+` / `-` | Densidade do ASCII (caracteres menores / maiores) |
 | `,` / `.` | Zoom da câmera: afasta / aproxima — `0` volta ao padrão |
 
@@ -76,6 +78,7 @@ Qualquer servidor de arquivos estáticos serve. Não há nada para instalar.
 ```
 index.html          carrega os scripts
 js/game.js          lógica do jogo, terreno, câmera e renderização
+js/i18n.js          traduções (en, pt, es, fr, de)
 sprites/            a arte, um arquivo para cada tipo de coisa — veja sprites/LEIAME.md
   car.js            o carro: um modelo 3D feito de caixas
   props.js          itens, minas e o míssil
