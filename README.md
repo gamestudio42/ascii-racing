@@ -7,7 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="https://gamestudio42.github.io/ascii-racing/"><img src="https://img.shields.io/badge/Play-33ff66?style=for-the-badge&labelColor=0a0f0a&color=33ff66" alt="Play ASCII Racing"></a>
+  <a href="https://gamestudio42.github.io/ascii-racing/"><strong>▶ Play now: gamestudio42.github.io/ascii-racing</strong></a>
+</p>
+
+<p align="center">
+  <a href="https://gamestudio42.github.io/ascii-racing/"><img src="https://img.shields.io/badge/%E2%96%B6%20PLAY%20NOW-1f9d4a?style=for-the-badge" alt="Play ASCII Racing"></a>
   <a href="https://github.com/gamestudio42/ascii-racing/stargazers"><img src="https://img.shields.io/github/stars/gamestudio42/ascii-racing?style=for-the-badge&labelColor=0a0f0a&color=33ff66" alt="Stars"></a>
   <a href="https://github.com/gamestudio42/ascii-racing/fork"><img src="https://img.shields.io/github/forks/gamestudio42/ascii-racing?style=for-the-badge&labelColor=0a0f0a&color=1f9d4a" alt="Forks"></a>
   <a href="https://github.com/gamestudio42"><img src="https://img.shields.io/badge/Game_Studio_42-0a0f0a?style=for-the-badge&labelColor=0a0f0a&color=1f9d4a" alt="Game Studio 42"></a>
