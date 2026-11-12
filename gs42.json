@@ -1,0 +1,14 @@
+{
+  "title": "ASCII Racing",
+  "tagline": {
+    "en": "Isometric combat racing, drawn entirely in ASCII.",
+    "pt": "Corrida de combate isométrica, desenhada toda em ASCII.",
+    "es": "Carreras de combate isométricas, dibujadas por completo en ASCII.",
+    "fr": "Course de combat isométrique, dessinée entièrement en ASCII.",
+    "de": "Isometrisches Kampfrennen, komplett in ASCII gezeichnet."
+  },
+  "cover": "docs/screenshots/race.jpg",
+  "genre": "combat-racing",
+  "tech": ["JavaScript", "Canvas 2D", "Web Audio"],
+  "order": 6
+}
