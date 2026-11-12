@@ -1,0 +1,17 @@
+# --- Ferramentas de IA / agentes (não fazem parte do jogo) ---
+.agents/
+.claude/
+.claude-flow/
+.swarm/
+awesome-gamedev-agent-skills/
+openspec/
+skills-lock.json
+
+# --- Sistema / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+*.swp
+__pycache__/

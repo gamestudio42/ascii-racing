@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Bake dos sprites dos carros</title></head>
+<body style="font:14px monospace;background:#111;color:#ddd;margin:16px">
+<h3>Bake dos sprites dos carros</h3>
+<p>Gera os carros em ASCII (todas as cores e ângulos) e salva em <code>sprites/baked/</code> através de
+<code>tools/save_server.py</code> (porta 8124). Abra esta página com o servidor do jogo rodando e o save_server ligado.</p>
+<pre id="log"></pre>
+<script>
+// ---- parâmetros do bake: edite e rode de novo para refazer ----
+const BAKE = {
+  dpr: 2,                 // gera em 2x: no jogo vira 1:1 em telas 2x e é reduzido (nítido) nas demais
+  zoomCss: 0.57,          // zoom de referência (deve ser o ZOOM_CSS padrão do jogo)
+  sfs: 6,                 // fonte dos caracteres do sprite (px, no tamanho 2x)
+  angles: 48, cols: 8,    // poses por cor e colunas do atlas
+  flameVariants: 4,
+  colors: ['#00e5ff', '#ff5252', '#ffd23f', '#7dff6b'],   // = CAR_DEFS do jogo
+};
+const FONT = '"DejaVu Sans Mono","Liberation Mono",Menlo,Consolas,monospace';
+
+// ---- itens que sprites/iso.js espera encontrar (os mesmos do jogo) ----
+const SFS = BAKE.sfs;
+const _m = document.createElement('canvas').getContext('2d'); _m.font = `bold ${SFS}px ${FONT}`;
+const SCW = Math.round(_m.measureText('M').width), SCH = Math.ceil(SFS * 1.15);
+const _g = new Map();
+function sglyph(ch, fg) {
+  const key = ch + '|' + fg; let g = _g.get(key); if (g) return g;
+  g = document.createElement('canvas'); g.width = SCW; g.height = SCH;
+  const x = g.getContext('2d'); x.font = `bold ${SFS}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = fg;
+  x.fillText(ch, SCW / 2, SCH / 2 + 0.5); _g.set(key, g); return g;
+}
+const _p = document.createElement('canvas'); _p.width = _p.height = 1; const _pc = _p.getContext('2d');
+function flushCanvas(cv) { _pc.drawImage(cv, 0, 0, 1, 1, 0, 0, 1, 1); }
+</script>
+<script src="../sprites/iso.js"></script>
+<script src="../sprites/car.js"></script>
+<script>
+const log = t => { document.getElementById('log').textContent += t + '\n'; };
+const tick = () => new Promise(r => setTimeout(r, 0));
+async function save(name, body) {
+  const r = await fetch('http://127.0.0.1:8124/save?name=' + name, { method: 'POST', body });
+  if (!r.ok) throw new Error('falha ao salvar ' + name);
+}
+const blobOf = cv => new Promise(r => cv.toBlob(r, 'image/png'));
+
+async function main() {
+  const S = BAKE.zoomCss * BAKE.dpr * CAR_SPRITE.scale, k = S * Math.SQRT1_2, zs = S * 0.8;
+  const f = Math.max(1, S / 3.08);
+  const buf = new Iso.SpriteBuffer(Math.round(CAR_SPRITE.w * f), Math.round(CAR_SPRITE.h * f), 0.62);
+  const [ax, ay] = buf.anchor;
+  log(`S=${S.toFixed(2)}  célula do caractere=${SCW}x${SCH}  buffer=${buf.hi.width}x${buf.hi.height}`);
+
+  // 1) converte todas as poses
+  const N = BAKE.angles, poses = [];                                   // poses[cor][ângulo] = {bmp, l, t}
+  for (const color of BAKE.colors) {
+    const row = [];
+    for (let j = 0; j < N; j++) {
+      CAR_SPRITE.paint(buf, { color, a: j * Math.PI * 2 / N, nitro: 0, flash: 0 }, k, zs);
+      const e = buf.convert(); row.push({ bmp: e.bmp, l: e.ox - ax, t: e.oy - ay });
+      if (j % 8 === 7) { log(`cor ${color}: ${j + 1}/${N}`); await tick(); }
+    }
+    poses.push(row);
+  }
+  const flames = [];
+  for (let v = 0; v < BAKE.flameVariants; v++) {
+    const lens = [30, 36, 42, 34], row = [];
+    for (let j = 0; j < N; j++) {
+      CAR_SPRITE.paintFlame(buf, j * Math.PI * 2 / N, k, zs, lens[v % 4]);
+      const e = buf.convert(); row.push({ bmp: e.bmp, l: e.ox - ax, t: e.oy - ay });
+    }
+    flames.push(row); await tick();
+  }
+
+  // 2) empacota cada pose recortada num atlas (prateleiras), guardando o retângulo e o deslocamento de cada uma
+  const MAXW = 2048;
+  const pack = list => {                                   // list = [{bmp,l,t}] -> { canvas, rects }
+    const rects = [], placed = [];
+    let x = 0, y = 0, rowH = 0;
+    for (const p of list) {
+      if (!p.bmp) { rects.push(null); continue; }
+      if (x + p.bmp.width > MAXW) { x = 0; y += rowH + 1; rowH = 0; }
+      rects.push({ x, y, w: p.bmp.width, h: p.bmp.height, l: p.l, t: p.t });
+      placed.push([p.bmp, x, y]);
+      x += p.bmp.width + 1; rowH = Math.max(rowH, p.bmp.height);
+    }
+    const cv = document.createElement('canvas'); cv.width = MAXW; cv.height = y + rowH;
+    const g = cv.getContext('2d');
+    for (const [bmp, px, py] of placed) g.drawImage(bmp, px, py);
+    return { canvas: cv, rects };
+  };
+  const files = [], carRects = [];
+  for (let i = 0; i < BAKE.colors.length; i++) {
+    const { canvas, rects } = pack(poses[i]); const name = `car-${i}.png`;
+    await save(name, await blobOf(canvas)); files.push(name); carRects.push(rects);
+    log('salvo ' + name + ` (${canvas.width}x${canvas.height})`);
+  }
+  const fp = pack(flames.flat());
+  await save('flame.png', await blobOf(fp.canvas)); log(`salvo flame.png (${fp.canvas.width}x${fp.canvas.height})`);
+
+  const meta = { built: Date.now(), angles: N, S, colors: BAKE.colors, files, rects: carRects,
+                 flame: { file: 'flame.png', variants: BAKE.flameVariants, rects: fp.rects } };
+  await save('meta.js', new Blob(['// Gerado por tools/bake.html — não edite à mão.\nconst BAKED_META = ' + JSON.stringify(meta) + ';\n']));
+  log('salvo meta.js');
+  log('PRONTO');
+  document.title = 'BAKE PRONTO';
+}
+main().catch(e => { log('ERRO: ' + e.message); document.title = 'BAKE ERRO'; });
+</script>
+</body></html>
