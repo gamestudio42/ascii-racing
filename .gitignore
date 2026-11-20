@@ -15,3 +15,9 @@ Thumbs.db
 *.log
 *.swp
 __pycache__/
+
+# --- Desktop shell (Electron). The web game at the repo root is unchanged. ---
+desktop/node_modules/
+desktop/www/
+desktop/release/
+*.snap

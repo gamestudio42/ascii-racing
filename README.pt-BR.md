@@ -77,6 +77,14 @@ python3 -m http.server 8000
 
 Qualquer servidor de arquivos estáticos serve. Não há nada para instalar.
 
+## Linux (Snap)
+
+```bash
+sudo snap install ascii-racing
+```
+
+A aba Builds da Snap Store gera o pacote a partir de `main` e publica essa build no canal `edge`. O snap roda o mesmo jogo offline. O site no GitHub Pages continua igual.
+
 ## Estrutura
 
 ```

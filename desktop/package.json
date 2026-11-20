@@ -1,0 +1,48 @@
+{
+  "name": "ascii-racing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ASCII Racing desktop shell (Electron) for the Linux snap",
+  "author": "Marcel Savegnago",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://gamestudio42.github.io/ascii-racing/",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "node scripts/copy-game.mjs",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && electron . --smoke",
+    "dist:dir": "npm run build && electron-builder --linux dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.gamestudio42.ascii-racing",
+    "productName": "ASCII Racing",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "www/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "category": "Game",
+      "icon": "build/icon.png",
+      "synopsis": "Isometric combat racing, drawn entirely in ASCII",
+      "description": "Race three rivals over three laps. Missiles, mines, nitro and repair pickups. Everything on screen is text.",
+      "executableName": "ascii-racing"
+    },
+    "executableName": "ascii-racing"
+  }
+}
