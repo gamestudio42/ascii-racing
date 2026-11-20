@@ -77,6 +77,14 @@ python3 -m http.server 8000
 
 Any static file server works. There is nothing to install.
 
+## Linux (Snap)
+
+```bash
+sudo snap install ascii-racing
+```
+
+The Snap Store Builds tab builds `main` and releases that build to the `edge` channel. The snap runs the same game offline. The GitHub Pages site is unchanged.
+
 ## Project layout
 
 ```

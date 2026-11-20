@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ASCII Racing
+Comment=Isometric combat racing, drawn entirely in ASCII
+Exec=ascii-racing
+Icon=${SNAP}/meta/gui/icon.png
+Categories=Game;ArcadeGame;
+StartupWMClass=ascii-racing
+Terminal=false
