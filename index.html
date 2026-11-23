@@ -3,14 +3,126 @@
 <head>
 <meta charset="utf-8">
 <title>ASCII Racing</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
   html,body{margin:0;height:100%;background:#07080c;overflow:hidden}
-  canvas{display:block;width:100vw;height:100vh}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none}
+  html.touch,html.touch body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+  #touch{
+    display:none;
+    position:fixed;
+    left:0;right:0;bottom:0;
+    z-index:5;
+    box-sizing:border-box;
+    flex-direction:column;
+    gap:6px;
+    padding:8px;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));
+    padding-left:calc(8px + env(safe-area-inset-left));
+    padding-right:calc(8px + env(safe-area-inset-right));
+    background:linear-gradient(to top,rgba(7,8,12,0.94) 55%,rgba(7,8,12,0));
+    pointer-events:none;
+  }
+  html.touch #touch{display:flex}
+  #touch button{
+    pointer-events:auto;
+    touch-action:none;
+    box-sizing:border-box;
+    margin:0;
+    min-width:0;
+    font-family:"DejaVu Sans Mono","Liberation Mono",Menlo,Consolas,monospace;
+    font-weight:700;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:#e8eefc;
+    background:rgba(10,12,18,0.88);
+    border:2px solid #3a4258;
+    border-radius:8px;
+    line-height:1.05;
+    padding:4px 2px;
+    cursor:pointer;
+  }
+  #touch button:focus{outline:none}
+  #touch button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  #touch button.on{filter:brightness(1.35);transform:translateY(1px)}
+  #btn-play{
+    width:100%;
+    min-height:52px;
+    border:0;
+    border-radius:10px;
+    background:#ffd23f;
+    color:#1a1203;
+    font-size:clamp(16px,4.2vw,22px);
+    letter-spacing:0.12em;
+  }
+  #btn-play.on{background:#ff9a2a;filter:none}
+  #btn-play[hidden]{display:none}
+  #pad{
+    display:grid;
+    gap:6px;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    grid-template-areas:
+      "left right fire mine nitro"
+      "brake gas pause sound lang";
+  }
+  #pad button{
+    min-height:48px;
+    font-size:clamp(10px,2.7vw,14px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+  .b-left{grid-area:left}
+  .b-right{grid-area:right}
+  .b-brake{grid-area:brake}
+  .b-gas{grid-area:gas}
+  .b-fire{grid-area:fire}
+  .b-mine{grid-area:mine}
+  .b-nitro{grid-area:nitro}
+  .b-pause{grid-area:pause}
+  .b-sound{grid-area:sound}
+  .b-lang{grid-area:lang}
+  .b-left,.b-right{color:#ffd23f;border-color:#c9a227}
+  .b-gas{color:#55ff88;border-color:#55ff88;background:#102418}
+  .b-brake{color:#ff6b6b;border-color:#ff4d4d;background:#281014}
+  .b-fire{color:#ff5555;border-color:#ff5555}
+  .b-mine{color:#ffa030;border-color:#ffa030}
+  .b-nitro{color:#33e0ff;border-color:#33e0ff}
+  .b-pause,.b-sound,.b-lang{color:#c8cee0;border-color:#3a4258;font-size:clamp(9px,2.2vw,12px)}
+  @media (orientation:landscape){
+    #touch{gap:4px;padding:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+    #btn-play{min-height:40px;font-size:clamp(15px,3.2vh,20px)}
+    #pad{
+      grid-template-columns:repeat(10,minmax(0,1fr));
+      grid-template-areas:"left right brake gas fire mine nitro pause sound lang";
+    }
+    #pad button{min-height:44px;font-size:clamp(10px,2.4vh,13px)}
+  }
+  @media (orientation:landscape) and (max-height:430px){
+    #touch{gap:3px;padding:4px;padding-bottom:calc(4px + env(safe-area-inset-bottom))}
+    #btn-play{min-height:34px}
+    #pad button{min-height:36px}
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="touch">
+  <button type="button" id="btn-play" data-i18n="touchPlay"></button>
+  <div id="pad">
+    <button type="button" class="b-left" data-hold="left" data-i18n="touchLeft"></button>
+    <button type="button" class="b-right" data-hold="right" data-i18n="touchRight"></button>
+    <button type="button" class="b-brake" data-hold="brake" data-i18n="touchBrake"></button>
+    <button type="button" class="b-gas" data-hold="gas" data-i18n="touchGas"></button>
+    <button type="button" class="b-fire" data-tap="fire" data-i18n="touchFire"></button>
+    <button type="button" class="b-mine" data-tap="mine" data-i18n="touchMine"></button>
+    <button type="button" class="b-nitro" data-tap="nitro" data-i18n="touchNitro"></button>
+    <button type="button" class="b-pause" id="btn-pause" data-i18n="touchPause"></button>
+    <button type="button" class="b-sound" id="btn-sound" data-i18n="touchSound"></button>
+    <button type="button" class="b-lang" id="btn-lang" data-i18n="touchLang"></button>
+  </div>
+</div>
 
 <!-- Sprites (cada arte no seu arquivo) -->
 <script src="sprites/terrain.js"></script>
