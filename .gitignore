@@ -21,3 +21,10 @@ desktop/node_modules/
 desktop/www/
 desktop/release/
 *.snap
+
+# --- CI (Pages build and Playwright). The game in the repo root is unchanged. ---
+node_modules/
+dist/
+test-results/
+playwright-report/
+blob-report/

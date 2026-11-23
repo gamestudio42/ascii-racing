@@ -1,5 +1,5 @@
 // Copies the static web game next to the Electron main process.
-// GitHub Pages keeps serving the repository root; this folder is a build output.
+// GitHub Pages publishes the copy made by scripts/build-pages.mjs; this folder is only for the snap.
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
