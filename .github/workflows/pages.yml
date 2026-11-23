@@ -133,3 +133,19 @@ jobs:
           preview-branch: gh-pages
           umbrella-dir: pr-preview
           action: auto
+          git-config-name: Marcel Savegnago
+          git-config-email: marcel.savegnago@gmail.com
+      # This repository's Pages site serves main, and the workflow token cannot
+      # switch that setting to gh-pages. Put the same preview directory on main
+      # so the URL loads. The action only writes pr-preview/pr-<number>/.
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: preview-site
+          preview-branch: main
+          umbrella-dir: pr-preview
+          action: auto
+          comment: false
+          git-config-name: Marcel Savegnago
+          git-config-email: marcel.savegnago@gmail.com
+          deploy-commit-message: Deploy preview for PR ${{ github.event.pull_request.number }}
+          remove-commit-message: Remove preview for PR ${{ github.event.pull_request.number }}
