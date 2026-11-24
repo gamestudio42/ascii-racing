@@ -3,14 +3,226 @@
 <head>
 <meta charset="utf-8">
 <title>ASCII Racing</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
   html,body{margin:0;height:100%;background:#07080c;overflow:hidden}
-  canvas{display:block;width:100vw;height:100vh}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none}
+  html.touch,html.touch body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;touch-action:none}
+  #touch{
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:5;
+    pointer-events:none;
+    font-family:"DejaVu Sans Mono","Liberation Mono",Menlo,Consolas,monospace;
+  }
+  html.touch #touch{display:block}
+  #touch button{
+    pointer-events:auto;
+    touch-action:none;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:0;
+    padding:0;
+    color:#e8eefc;
+    background:rgba(8,10,16,0.42);
+    border:2px solid rgba(232,238,252,0.5);
+    box-shadow:0 2px 10px rgba(0,0,0,0.28);
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+    cursor:pointer;
+  }
+  #touch button svg{display:block;pointer-events:none}
+  #touch button:focus{outline:none}
+  #touch button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  #touch button.on,#touch button:active{
+    background:rgba(255,255,255,0.3);
+    border-color:#fff;
+  }
+  #touch-top{
+    position:absolute;
+    top:calc(8px + env(safe-area-inset-top));
+    right:calc(8px + env(safe-area-inset-right));
+    display:grid;
+    grid-template-columns:48px 48px;
+    gap:8px;
+  }
+  #touch-top button{
+    width:48px;
+    height:48px;
+    border-radius:12px;
+  }
+  #touch-top button svg{width:24px;height:24px}
+  #touch-top button[aria-pressed="true"]{
+    color:#ffd23f;
+    border-color:rgba(255,210,63,0.95);
+    background:rgba(40,32,8,0.55);
+  }
+  #btn-play{
+    position:absolute;
+    left:50%;
+    bottom:calc(168px + env(safe-area-inset-bottom));
+    transform:translateX(-50%);
+    min-width:148px;
+    min-height:64px;
+    max-width:calc(100vw - 36px);
+    padding:0 22px;
+    border:0;
+    border-radius:14px;
+    background:#ffd23f;
+    color:#1a1203;
+    font-size:clamp(16px,4.4vw,22px);
+    font-weight:800;
+    letter-spacing:0.08em;
+    white-space:nowrap;
+    box-shadow:0 6px 18px rgba(0,0,0,0.35);
+  }
+  #btn-play:active{background:#ff9a2a}
+  #btn-play[hidden]{display:none !important}
+  #thumb-left{
+    position:absolute;
+    left:calc(12px + env(safe-area-inset-left));
+    bottom:calc(16px + env(safe-area-inset-bottom));
+    display:flex;
+    gap:14px;
+  }
+  #thumb-left[hidden]{display:none !important}
+  .b-left,.b-right{
+    width:72px;
+    height:72px;
+    border-radius:50%;
+    color:#ffd23f;
+    border-color:rgba(255,210,63,0.8);
+  }
+  .b-left svg,.b-right svg{width:36px;height:36px}
+  #thumb-right{
+    position:absolute;
+    right:calc(12px + env(safe-area-inset-right));
+    bottom:calc(14px + env(safe-area-inset-bottom));
+    display:grid;
+    grid-template-columns:64px 72px;
+    grid-template-rows:64px 72px;
+    gap:10px;
+    align-items:center;
+    justify-items:center;
+  }
+  .b-mine{grid-column:1;grid-row:1}
+  .b-nitro{grid-column:2;grid-row:1}
+  .b-fire{grid-column:1;grid-row:2}
+  .b-brake{grid-column:2;grid-row:2}
+  .b-fire,.b-mine,.b-nitro{
+    position:relative;
+    width:64px;
+    height:64px;
+    border-radius:50%;
+  }
+  .b-fire svg,.b-mine svg,.b-nitro svg{width:32px;height:32px}
+  .b-fire{color:#ff5555;border-color:rgba(255,85,85,0.85)}
+  .b-mine{color:#ffa030;border-color:rgba(255,160,48,0.9)}
+  .b-nitro{color:#33e0ff;border-color:rgba(51,224,255,0.9)}
+  .b-brake{
+    width:72px;
+    height:72px;
+    border-radius:18px;
+    color:#ff6b6b;
+    border-color:rgba(255,77,77,0.9);
+    background:rgba(80,16,20,0.5);
+  }
+  .b-brake .stack{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:1px;
+    pointer-events:none;
+  }
+  .b-brake svg{width:28px;height:28px}
+  .cap{
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:0.04em;
+    line-height:1;
+    pointer-events:none;
+  }
+  .badge{
+    position:absolute;
+    top:-5px;
+    right:-5px;
+    min-width:18px;
+    height:18px;
+    padding:0 4px;
+    border-radius:9px;
+    background:#ffd23f;
+    color:#1a1203;
+    font-size:11px;
+    font-weight:800;
+    line-height:18px;
+    text-align:center;
+    pointer-events:none;
+  }
+  .badge.empty{background:#3a4258;color:#d5dbeb}
+  #touch [hidden]{display:none !important}
+  @media (orientation:landscape){
+    #btn-play{
+      bottom:calc(96px + env(safe-area-inset-bottom));
+      min-height:64px;
+      font-size:clamp(15px,3.4vh,20px);
+    }
+    #thumb-right{gap:8px}
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="touch">
+  <div id="touch-top">
+    <button type="button" id="btn-steer" aria-pressed="true">
+      <svg id="ico-tilt" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="8" height="14" rx="1.6" transform="rotate(-16 13 10)" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 16.5c1.8 2.6 4.2 3.8 7.2 3.8 2.2 0 3.6-.6 4.8-1.6"/></svg>
+      <svg id="ico-arrows" viewBox="0 0 24 24" aria-hidden="true" hidden><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M9 6.5 L4.5 12 L9 17.5 M15 6.5 L19.5 12 L15 17.5"/></svg>
+    </button>
+    <button type="button" id="btn-pause">
+      <svg id="ico-pause" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4h3.2v16H7zM13.8 4H17v16h-3.2z"/></svg>
+      <svg id="ico-resume" viewBox="0 0 24 24" aria-hidden="true" hidden><path fill="currentColor" d="M8 4.5v15l12-7.5z"/></svg>
+    </button>
+    <button type="button" id="btn-sound">
+      <svg id="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 9.2a3.6 3.6 0 0 1 0 5.6M18.2 7a6.2 6.2 0 0 1 0 10"/></svg>
+      <svg id="ico-muted" viewBox="0 0 24 24" aria-hidden="true" hidden><path fill="currentColor" d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+    </button>
+    <button type="button" id="btn-lang">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M4 12h16M12 4c2.2 2.4 3.4 5 3.4 8s-1.2 5.6-3.4 8c-2.2-2.4-3.4-5-3.4-8s1.2-5.6 3.4-8z"/></svg>
+    </button>
+  </div>
+  <button type="button" id="btn-play">JOGAR</button>
+  <div id="thumb-left">
+    <button type="button" id="btn-left" class="b-left" data-hold="left">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 5 L7 12 L14.5 19"/></svg>
+    </button>
+    <button type="button" id="btn-right" class="b-right" data-hold="right">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M9.5 5 L17 12 L9.5 19"/></svg>
+    </button>
+  </div>
+  <div id="thumb-right">
+    <button type="button" id="btn-mine" class="b-mine" data-tap="mine">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="5" fill="currentColor"/><path fill="currentColor" d="M11 2h2v3.2h-2zM11 18.8h2V22h-2zM2 12h3.2v2H2zM18.8 12H22v2h-3.2zM5.2 5.4l1.4-1.4 2.2 2.2-1.4 1.4zM15.2 15.4l1.4-1.4 2.2 2.2-1.4 1.4zM5.2 18.6l2.2-2.2 1.4 1.4-2.2 2.2zM15.2 8.6l2.2-2.2 1.4 1.4-2.2 2.2z"/></svg>
+      <span class="badge" id="badge-mine">2</span>
+    </button>
+    <button type="button" id="btn-nitro" class="b-nitro" data-tap="nitro">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.6c.4 2.8-.6 4.8-1.8 6.4-1 1.4-2 2.6-2 4.6 0 3.4 2.4 5.8 5.8 5.8s5.8-2.4 5.8-5.8c0-2-.8-3.4-1.8-4.8-.2 1.4-1.2 2.2-2.2 2.2-.8 0-1.4-.6-1.4-1.5 0-2 1.4-3.8 1.4-6-.1-1.4-.4-2.8-1.2-4.2-.8 1.8-1.8 2.8-2.6 3.3z"/></svg>
+      <span class="badge" id="badge-nitro">1</span>
+    </button>
+    <button type="button" id="btn-fire" class="b-fire" data-tap="fire">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.2c2.6 3 3.8 6.6 3.8 10.4 0 .2-1 .8-1.8.9v2.1l2.2 3.2h-2.4L12 15.6l-1.8 2.2H7.8l2.2-3.2v-2.1c-.8-.1-1.8-.7-1.8-.9 0-3.8 1.2-7.4 3.8-10.4z"/><circle cx="12" cy="8.2" r="1.35" fill="#2a1010"/></svg>
+      <span class="badge" id="badge-fire">3</span>
+    </button>
+    <button type="button" id="btn-brake" class="b-brake" data-hold="brake">
+      <span class="stack">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11" r="6.2" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="11" r="2.1" fill="currentColor"/></svg>
+        <span class="cap">FREIO</span>
+      </span>
+    </button>
+  </div>
+</div>
 
 <!-- Sprites (cada arte no seu arquivo) -->
 <script src="sprites/terrain.js"></script>

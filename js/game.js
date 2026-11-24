@@ -92,7 +92,7 @@ function putS(ch,fg,cx,cy){ ctx.drawImage(sglyph(ch,fg),Math.round(cx-SCW/2),Mat
 // ---------- Áudio (WebAudio minimalista) ----------
 let AC=null, muted=false, engOsc=null, engGain=null, noiseBuf=null;
 function ensureAudio(){
-  if(AC) return;
+  if(AC){ if(AC.state==='suspended') AC.resume(); return; }
   try{
     AC = new (window.AudioContext||window.webkitAudioContext)();
     noiseBuf = AC.createBuffer(1, AC.sampleRate*0.6, AC.sampleRate);
@@ -611,6 +611,10 @@ let state='title';                // title | countdown | race | finish
 let flashes=[], cars=[], player=null, missiles=[], mines=[], pickups=[], FX=[], floaters=[], logMsgs=[];
 let camX=0, camY=0, shake=0, raceTime=0, countdown=0, finishedCount=0, paused=false, lastBeep=-1;
 const keys={}, pressed={};
+// Held by on-screen buttons. Merged with the keyboard so a keyup cannot cancel a finger.
+const touchHold={ArrowLeft:false,ArrowRight:false,ArrowDown:false};
+let touchUi=window.matchMedia('(pointer: coarse)').matches;
+let footerPx=0, topPx=0;
 
 const CAR_DEFS = [
   {name:'VOCÊ',   color:'#00e5ff', skill:1.00},
@@ -903,8 +907,7 @@ function updateCar(c, dt){
   if(state==='countdown') ctl={steer:0,thr:0,brake:1};
   else if(c.auto) ctl=aiControl(c,dt);
   else {
-    ctl={steer:(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0),
-         thr:(keys.ArrowUp||keys.KeyW)?1:0, brake:(keys.ArrowDown||keys.KeyS)?1:0};
+    ctl=playerControl();
     if(pressed.Space||pressed.KeyZ) fireMissile(c);
     if(pressed.KeyX||pressed.KeyE) dropMine(c);
     if(pressed.ShiftLeft||pressed.ShiftRight||pressed.KeyC) useNitro(c);
@@ -933,6 +936,7 @@ function updateCar(c, dt){
 }
 
 function update(dt){
+  smoothTilt(dt);
   if(state==='countdown'){
     countdown-=dt;
     const n=Math.ceil(countdown);
@@ -1157,6 +1161,27 @@ function text(str,x,y,col,align,size){
   ctx.fillStyle=col||'#fff'; ctx.fillText(str,x,y);
 }
 
+// Canvas pixels covered by the thumb controls (and the play button, when it is up).
+function bottomPad(){ return footerPx; }
+function refreshFooterPad(){
+  const scale=W/Math.max(1, innerWidth);
+  if(!touchUi){ footerPx=0; topPx=0; return; }
+  const bar=document.getElementById('touch-top');
+  if(bar){
+    const r=bar.getBoundingClientRect();
+    topPx=Math.max(0, r.bottom)*scale;
+  } else topPx=0;
+  let top=innerHeight;
+  for(const id of ['thumb-right','thumb-left','btn-play']){
+    const el=document.getElementById(id);
+    if(!el || el.hidden) continue;
+    const r=el.getBoundingClientRect();
+    if(r.width<1 || r.height<1) continue;
+    top=Math.min(top, r.top);
+  }
+  footerPx=top<innerHeight ? (innerHeight-top)*scale+16*scale : 0;
+}
+
 function drawHUD(){
   const pad=HCW*2, rk=ranking();
   const myPos=rk.indexOf(player)+1;
@@ -1169,9 +1194,9 @@ function drawHUD(){
     const c=rk[i];
     text(`${i+1}. ${c.name}${c.finished?' ✓':''}`,pad,pad*0.6+HCH*(4+i),c.color);
   }
-  // minimapa
+  // minimapa. Sits under the touch settings when those icons are in the top corner.
   if(miniCanvas){
-    const mx=W-MW-pad, my=pad*0.6;
+    const mx=W-MW-pad, my=touchUi?Math.max(pad*0.6, topPx+4*DPR):pad*0.6;
     ctx.globalAlpha=0.9; ctx.drawImage(miniCanvas,mx,my); ctx.globalAlpha=1;
     ctx.font=`bold ${HFS}px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle';
     for(const c of cars){
@@ -1185,18 +1210,29 @@ function drawHUD(){
     text(logMsgs[i].t,W-pad,my0()+HCH*i,'#ffb347','right');
   }
   ctx.globalAlpha=1;
-  // barra de vida + itens (rodapé)
-  const by=H-HCH*4.2;
+  // Health and items. Lifted above the thumb controls when they cover the canvas.
+  const lift=bottomPad();
+  const by=H-lift-HCH*4.2;
   const hpN=Math.round(player.hp/5);
   const bar='['+'#'.repeat(hpN)+'-'.repeat(20-hpN)+']';
   const hc=player.hp>60?'#55ff88':player.hp>30?'#ffd23f':'#ff4d4d';
-  const lx=pad+HCW*11, cxn=pad+HCW*21;                      // colunas: tecla | rótulo | quantidade (cabem em qualquer idioma)
+  const fireK=touchUi?t('touchFire'):t('keySpace');
+  const mineK=touchUi?t('touchMine'):'X';
+  const nitroK=touchUi?t('touchNitro'):'SHIFT';
+  let lx=pad+HCW*11, cxn=pad+HCW*21;                      // colunas: tecla | rótulo | quantidade (cabem em qualquer idioma)
+  if(touchUi){
+    ctx.font=`bold ${HFS}px ${FONT}`;
+    const keyW=Math.max(ctx.measureText(fireK).width,ctx.measureText(mineK).width,ctx.measureText(nitroK).width);
+    lx=pad+keyW+HCW*2;
+    const labW=Math.max(ctx.measureText(t('missiles')).width,ctx.measureText(t('mines')).width,ctx.measureText(t('nitro')).width,ctx.measureText(t('health')).width);
+    cxn=lx+labW+HCW*2;
+  }
   text(t('health'),pad,by,'#9aa3bd'); text(bar+' '+Math.ceil(player.hp),lx,by,hc);
-  text(t('keySpace'),pad,by+HCH,'#ff5555'); text(t('missiles'),lx,by+HCH,'#ff5555'); text('x'+player.missiles,cxn,by+HCH,'#fff');
-  text('X',pad,by+HCH*2,'#ffa030'); text(t('mines'),lx,by+HCH*2,'#ffa030'); text('x'+player.mines,cxn,by+HCH*2,'#fff');
-  text('SHIFT',pad,by+HCH*3,'#33e0ff'); text(t('nitro'),lx,by+HCH*3,'#33e0ff'); text('x'+player.nitroCount+(player.nitro>0?'  ▶▶▶':''),cxn,by+HCH*3,'#fff');
-  // velocímetro
-  text(`${Math.round(player.speed*0.4)} km/h`,W-pad,H-HCH*2.4,'#fff','right');
+  text(fireK,pad,by+HCH,'#ff5555'); text(t('missiles'),lx,by+HCH,'#ff5555'); text('x'+player.missiles,cxn,by+HCH,'#fff');
+  text(mineK,pad,by+HCH*2,'#ffa030'); text(t('mines'),lx,by+HCH*2,'#ffa030'); text('x'+player.mines,cxn,by+HCH*2,'#fff');
+  text(nitroK,pad,by+HCH*3,'#33e0ff'); text(t('nitro'),lx,by+HCH*3,'#33e0ff'); text('x'+player.nitroCount+(player.nitro>0?'  ▶▶▶':''),cxn,by+HCH*3,'#fff');
+  // Speed stays on the old row when the thumb controls are hidden.
+  text(`${Math.round(player.speed*0.4)} km/h`,W-pad,by+HCH*1.8,'#fff','right');
   // contra-mão
   if(state==='race' && player.dead<=0 && player.speed>90){
     const p=track[player.idx];
@@ -1205,63 +1241,319 @@ function drawHUD(){
   }
   if(player.dead>0) text(t('destroyed'),W/2,H*0.25,'#ff4d4d','center',HFS*1.6);
 }
-function my0(){ return HCW*2*0.6+MH+HCH; }
+function my0(){
+  const miniTop=touchUi?Math.max(HCW*2*0.6, topPx+4*DPR):HCW*2*0.6;
+  return miniTop+MH+HCH;
+}
 
 function drawCenterBig(str,row,sx,sy,colorFn){
   const cols=Math.floor(W/HCW);
   drawBig(str, Math.floor((cols-bigWidth(str,sx))/2), row, sx, sy, colorFn);
 }
 
+// Shrink the big ASCII word only when it would leave the screen. A fit keeps the original scale.
+function drawFittedBig(str, row, sx, sy, colorFn){
+  // Keep the original scale when the word already fits a normal window.
+  // Short screens shrink it so the countdown does not cover the cars.
+  const usableH=H-bottomPad();
+  const capW=W*0.72, capH=usableH*0.34;
+  let fsx=sx, fsy=sy;
+  const overflows=()=>{
+    const bw=bigWidth(str,fsx)*HCW, bh=5*fsy*HCH;
+    return bw>W-8 || (row+5*fsy)*HCH>usableH || bw>capW || bh>capH;
+  };
+  while((fsx>1||fsy>1) && overflows()){
+    if(fsx>=fsy && fsx>1) fsx--;
+    else if(fsy>1) fsy--;
+    else break;
+  }
+  let r=row;
+  if((r+5*fsy)*HCH>usableH) r=Math.max(0, Math.floor((usableH-5*fsy*HCH)/HCH));
+  drawCenterBig(str, r, fsx, fsy, colorFn);
+}
+
+function paintBigAt(str, left, top, sx, sy, colorFn, cw, ch, fs){
+  ctx.font=`bold ${fs}px ${FONT}`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  let x0=left;
+  for(const chr of str){
+    const glyph=BIG[chr]||BIG[' '];
+    for(let r=0;r<5;r++){
+      const row=glyph[r]||'';
+      for(let c=0;c<5;c++) if(row[c]==='#'){
+        for(let yy=0;yy<sy;yy++) for(let xx=0;xx<sx;xx++){
+          ctx.fillStyle=colorFn(r*sy+yy, 5*sy);
+          ctx.fillText('#', x0+(c*sx+xx)*cw+cw/2, top+(r*sy+yy)*ch+ch/2);
+        }
+      }
+    }
+    x0+=6*sx*cw;
+  }
+}
+
+function measureAt(fs, str){
+  ctx.font=`bold ${fs}px ${FONT}`;
+  return ctx.measureText(str).width;
+}
+
+function wrapLines(str, maxW, fs){
+  if(measureAt(fs, str)<=maxW) return [str];
+  const words=str.split(/\s+/).filter(Boolean), lines=[];
+  let cur='';
+  for(const word of words){
+    const next=cur?cur+' '+word:word;
+    if(measureAt(fs, next)<=maxW) cur=next;
+    else { if(cur) lines.push(cur); cur=word; }
+  }
+  if(cur) lines.push(cur);
+  return lines.length?lines:[str];
+}
+
+function spacedWords(s){ return s.split(' ').map(w=>w.split('').join(' ')).join('   '); }
+
+function titleContent(){
+  const row=(k,a)=>k+' '+'.'.repeat(Math.max(3,22-k.length))+' '+a;
+  const steerWord=usingArrows()?t('touchArrows'):t('touchTilt');
+  const pairs=touchUi
+    ? [[steerWord+' / '+t('touchAuto')+' / '+t('touchBrake'),t('ctrlDrive')],[t('touchFire'),t('ctrlMissile')],[t('touchMine'),t('ctrlMine')],[t('touchNitro'),t('ctrlNitro')]]
+    : [[t('keyArrows')+' / WASD',t('ctrlDrive')],[t('keySpace'),t('ctrlMissile')],['X',t('ctrlMine')],['SHIFT',t('ctrlNitro')]];
+  return {
+    pairs,
+    rows:pairs.map(([k,a])=>row(k,a)),
+    press:touchUi?t('pressPlay'):t('pressEnter'),
+    sys:touchUi?t('touchSys'):t('sysKeys'),
+    items:t('itemsLine'),
+    lang:(touchUi?t('touchLang')+'  ':'[L]  ')+I18N.langs.map(l=>l===I18N.lang?'< '+I18N.names[l]+' >':I18N.names[l]).join('   '),
+    sub:'~ ~ ~   '+spacedWords(t('subtitle'))+'   ~ ~ ~',
+  };
+}
+
+function titleLegacyFits(c){
+  const rows=Math.floor(H/HCH);
+  const sx=W>1100?2:1;
+  const top=Math.max(2,Math.floor(rows*0.12));
+  const y0=(top+14)*HCH;
+  if(y0+HCH*14+HFS>H-bottomPad()) return false;
+  if(bigWidth('ASCII',sx)*HCW>W-4||bigWidth('RACING',sx)*HCW>W-4) return false;
+  if(measureAt(HFS, c.sub)>W-8) return false;
+  if(measureAt(Math.round(HFS*1.25), c.press)>W-8) return false;
+  if(measureAt(HFS, c.sys)>W-8||measureAt(HFS, c.items)>W-8||measureAt(HFS, c.lang)>W-8) return false;
+  for(const s of c.rows) if(measureAt(HFS, s)>W-8) return false;
+  return true;
+}
+
+function drawTitleLegacy(c){
+  ctx.fillStyle='rgba(4,6,10,0.62)'; ctx.fillRect(0,0,W,H);
+  const rows=Math.floor(H/HCH);
+  const sx=W>1100?2:1, sy=1;
+  const top=Math.max(2,Math.floor(rows*0.12));
+  drawCenterBig('ASCII',top,sx,sy,(r,n)=>r<n/2?'#ffd23f':'#ff9a2a');
+  drawCenterBig('RACING',top+7,sx,sy,(r,n)=>r<n/2?'#ff6a3d':'#ff3b30');
+  const cx=W/2, y0=(top+14)*HCH;
+  text(c.sub,cx,y0,'#9aa3bd','center');
+  if(((performance.now()/500)|0)%2===0) text(c.press,cx,y0+HCH*3,'#ffffff','center',HFS*1.25);
+  const L=c.rows.concat([c.sys]);
+  for(let i=0;i<L.length;i++) text(L[i],cx,y0+HCH*(6+i),'#c8cee0','center');
+  text(c.items,cx,y0+HCH*12,'#9aa3bd','center');
+  text(c.lang,cx,y0+HCH*14,'#7f88a6','center');
+}
+
+function controlPairLines(pairs, maxW, fs){
+  const out=[];
+  for(const [k,a] of pairs){
+    let dots=Math.max(2,22-k.length);
+    let s=k+' '+'.'.repeat(dots)+' '+a;
+    while(dots>2 && measureAt(fs,s)>maxW){ dots--; s=k+' '+'.'.repeat(dots)+' '+a; }
+    if(measureAt(fs,s)<=maxW) out.push(s);
+    else { out.push(...wrapLines(k,maxW,fs)); out.push(...wrapLines(a,maxW,fs)); }
+  }
+  return out;
+}
+
+function layoutTitle(c, scale){
+  const fs=Math.max(8, Math.round(HFS*scale));
+  const ch=Math.ceil(fs*1.2);
+  ctx.font=`bold ${fs}px ${FONT}`;
+  const cw=Math.ceil(ctx.measureText('M').width);
+  const pad=Math.max(4, Math.round(8*DPR*Math.min(1,scale)));
+  const maxW=W-pad*2;
+  const limit=H-bottomPad()-pad;
+  if(bigWidth('RACING',1)*cw>maxW||bigWidth('ASCII',1)*cw>maxW) return {ok:false,blocks:[]};
+  const blocks=[];
+  let y=touchUi?Math.max(pad, topPx+pad*0.2):pad;
+  const gap=k=>{ y+=Math.round(ch*k); };
+  const addBig=(str,colorFn)=>{
+    blocks.push({type:'big',str,y,colorFn,cw,ch,fs,h:5*ch});
+    y+=5*ch;
+  };
+  const addLines=(lines,color,tfs)=>{
+    const lh=Math.ceil(tfs*1.25);
+    for(const line of lines){
+      if(measureAt(tfs,line)>maxW+0.5) return false;
+      blocks.push({type:'text',str:line,y,color,fs:tfs,h:lh});
+      y+=lh;
+    }
+    return true;
+  };
+  addBig('ASCII',(r,n)=>r<n/2?'#ffd23f':'#ff9a2a');
+  gap(0.3);
+  addBig('RACING',(r,n)=>r<n/2?'#ff6a3d':'#ff3b30');
+  gap(0.5);
+  const sub=measureAt(fs,c.sub)<=maxW?c.sub:t('subtitle');
+  if(!addLines(wrapLines(sub,maxW,fs),'#9aa3bd',fs)) return {ok:false,blocks:[]};
+  gap(0.4);
+  const pressFs=Math.round(fs*1.12);
+  const pressLines=measureAt(pressFs,c.press)<=maxW?[c.press]:wrapLines(c.press,maxW,fs);
+  const pressSize=pressLines.length===1?pressFs:fs;
+  if(!addLines(pressLines,'#ffffff',pressSize)) return {ok:false,blocks:[]};
+  blocks[blocks.length-pressLines.length].blink=true;
+  for(let i=1;i<pressLines.length;i++) blocks[blocks.length-pressLines.length+i].blink=true;
+  gap(0.35);
+  if(!addLines(controlPairLines(c.pairs,maxW,fs),'#c8cee0',fs)) return {ok:false,blocks:[]};
+  gap(0.35);
+  if(!addLines(wrapLines(c.sys,maxW,fs),'#c8cee0',fs)) return {ok:false,blocks:[]};
+  gap(0.3);
+  if(!addLines(wrapLines(c.items,maxW,fs),'#9aa3bd',fs)) return {ok:false,blocks:[]};
+  gap(0.25);
+  if(!addLines(wrapLines(c.lang,maxW,fs),'#7f88a6',fs)) return {ok:false,blocks:[]};
+  const spare=limit-y;
+  return {ok:spare>=0, blocks, shift:spare>0?Math.min(spare*0.22, ch*1.5):0};
+}
+
+let menuSig='', menuCache=null;
+function titleLayout(){
+  const sig=[touchUi?1:0, usingArrows()?1:0, I18N.lang, W, H, Math.round(footerPx), Math.round(topPx), HFS, HCW, HCH].join('|');
+  if(menuSig===sig && menuCache) return menuCache;
+  menuSig=sig;
+  const content=titleContent();
+  const legacy=titleLegacyFits(content);
+  let plan=null;
+  if(!legacy){
+    let fallback=null;
+    for(let scale=1; scale>=0.4; scale=Math.round((scale-0.06)*100)/100){
+      const next=layoutTitle(content, scale);
+      if(next.blocks && next.blocks.length) fallback=next;
+      if(next.ok){ plan=next; break; }
+    }
+    plan=plan||fallback;
+  }
+  menuCache={content, legacy, plan};
+  return menuCache;
+}
+
+function drawTitleCompact(plan){
+  if(!plan) return;
+  ctx.fillStyle='rgba(4,6,10,0.62)'; ctx.fillRect(0,0,W,H);
+  const shift=plan.ok?plan.shift:0;
+  const limit=H-bottomPad();
+  const blinkOn=((performance.now()/500)|0)%2===0;
+  for(const b of plan.blocks){
+    const y=b.y+shift;
+    if(y+(b.h||0)>limit) continue;
+    if(b.type==='big'){
+      const width=bigWidth(b.str,1)*b.cw;
+      paintBigAt(b.str,(W-width)/2,y,1,1,b.colorFn,b.cw,b.ch,b.fs);
+    } else if(!b.blink || blinkOn) text(b.str,W/2,y,b.color,'center',b.fs);
+  }
+}
+
+function finishLegacyFits(again){
+  const rows=Math.floor(H/HCH);
+  const y0=Math.floor(rows*0.1+8)*HCH;
+  if(y0+HCH*11+HFS*1.2>H-bottomPad()) return false;
+  if(bigWidth('FINISH',2)*HCW>W-8) return false;
+  if(measureAt(HFS*1.4, t('finishMsg',ord(player.place||1)))>W-12) return false;
+  if(measureAt(HFS*1.2, again)>W-12) return false;
+  for(let i=0;i<cars.length;i++){
+    const c=cars[i];
+    const line=`${i+1}. ${c.name.padEnd(8)} ${c.finished?fmtTime(c.finishTime):t('racing')}`;
+    if(measureAt(HFS, line)>W-12) return false;
+  }
+  return true;
+}
+
+function drawFinishLegacy(again){
+  const rows=Math.floor(H/HCH);
+  ctx.fillStyle='rgba(4,6,10,0.6)'; ctx.fillRect(0,0,W,H);
+  drawCenterBig('FINISH',Math.floor(rows*0.1),2,1,(r,n)=>r<n/2?'#ffd23f':'#ff9a2a');
+  const rk=ranking(), cx=W/2, y0=Math.floor(rows*0.1+8)*HCH;
+  text(t('finishMsg',ord(player.place)),cx,y0,player.place===1?'#ffd23f':'#fff','center',HFS*1.4);
+  for(let i=0;i<rk.length;i++){
+    const c=rk[i];
+    const line=`${i+1}. ${c.name.padEnd(8)} ${c.finished?fmtTime(c.finishTime):t('racing')}`;
+    text(line,cx,y0+HCH*(3+i*1.3),c.color,'center');
+  }
+  if(((performance.now()/500)|0)%2===0) text(again,cx,y0+HCH*11,'#fff','center',HFS*1.2);
+}
+
+function drawFinishCompact(again){
+  ctx.fillStyle='rgba(4,6,10,0.6)'; ctx.fillRect(0,0,W,H);
+  const rk=ranking();
+  let chosen=null;
+  for(let scale=1; scale>=0.4; scale=Math.round((scale-0.06)*100)/100){
+    const fs=Math.max(8, Math.round(HFS*scale));
+    const ch=Math.ceil(fs*1.2);
+    ctx.font=`bold ${fs}px ${FONT}`;
+    const cw=Math.ceil(ctx.measureText('M').width);
+    const pad=Math.max(4, Math.round(8*DPR*Math.min(1,scale)));
+    const maxW=W-pad*2;
+    const limit=H-bottomPad()-pad;
+    if(bigWidth('FINISH',1)*cw>maxW) continue;
+    const lines=[];
+    let y=pad+5*ch+Math.round(ch*0.45);
+    const push=(str,color,tfs,blink)=>{
+      const lh=Math.ceil(tfs*1.25);
+      for(const line of wrapLines(str,maxW,tfs)){
+        lines.push({str:line,y,color,fs:tfs,blink:!!blink});
+        y+=lh;
+      }
+    };
+    push(t('finishMsg',ord(player.place)), player.place===1?'#ffd23f':'#fff', Math.round(fs*1.15), false);
+    y+=Math.round(ch*0.3);
+    for(let i=0;i<rk.length;i++){
+      const c=rk[i];
+      push(`${i+1}. ${c.name}  ${c.finished?fmtTime(c.finishTime):t('racing')}`, c.color, fs, false);
+    }
+    y+=Math.round(ch*0.4);
+    push(again,'#fff',Math.round(fs*1.1),true);
+    const wide=lines.some(l=>measureAt(l.fs,l.str)>maxW+0.5);
+    chosen={y,limit,lines,fs,cw,ch,pad,wide};
+    if(y<=limit && !wide) break;
+  }
+  if(!chosen) return;
+  const shift=chosen.y<=chosen.limit?Math.min((chosen.limit-chosen.y)*0.2, chosen.ch):0;
+  const width=bigWidth('FINISH',1)*chosen.cw;
+  paintBigAt('FINISH',(W-width)/2,chosen.pad+shift,1,1,(r,n)=>r<n/2?'#ffd23f':'#ff9a2a',chosen.cw,chosen.ch,chosen.fs);
+  const blinkOn=((performance.now()/500)|0)%2===0;
+  for(const l of chosen.lines){
+    if(l.blink && !blinkOn) continue;
+    if(l.y+shift>chosen.limit) continue;
+    text(l.str,W/2,l.y+shift,l.color,'center',l.fs);
+  }
+}
+
 function drawOverlay(){
-  const cols=Math.floor(W/HCW), rows=Math.floor(H/HCH);
+  const rows=Math.floor(H/HCH);
   if(state==='title'){
-    ctx.fillStyle='rgba(4,6,10,0.62)'; ctx.fillRect(0,0,W,H);
-    const sx=W>1100?2:1, sy=1;
-    const top=Math.max(2,Math.floor(rows*0.12));
-    drawCenterBig("ASCII",top,sx,sy,(r,n)=>r<n/2?'#ffd23f':'#ff9a2a');
-    drawCenterBig("RACING",top+7,sx,sy,(r,n)=>r<n/2?'#ff6a3d':'#ff3b30');
-    const cx=W/2, y0=(top+14)*HCH;
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    const spaced=s=>s.split(' ').map(w=>w.split('').join(' ')).join('   ');
-    text('~ ~ ~   '+spaced(t('subtitle'))+'   ~ ~ ~',cx,y0,'#9aa3bd','center');
-    const blink=((performance.now()/500)|0)%2===0;
-    if(blink) text(t('pressEnter'),cx,y0+HCH*3,'#ffffff','center',HFS*1.25);
-    const row=(k,a)=>k+' '+'.'.repeat(Math.max(3,22-k.length))+' '+a;
-    const L=[
-      row(t('keyArrows')+' / WASD',t('ctrlDrive')),
-      row(t('keySpace'),t('ctrlMissile')),
-      row('X',t('ctrlMine')),
-      row('SHIFT',t('ctrlNitro')),
-      t('sysKeys')
-    ];
-    for(let i=0;i<L.length;i++) text(L[i],cx,y0+HCH*(6+i),'#c8cee0','center');
-    text(t('itemsLine'),cx,y0+HCH*12,'#9aa3bd','center');
-    text('[L]  '+I18N.langs.map(l=>l===I18N.lang?'< '+I18N.names[l]+' >':I18N.names[l]).join('   '),cx,y0+HCH*14,'#7f88a6','center');
+    const lay=titleLayout();
+    if(lay.legacy) drawTitleLegacy(lay.content);
+    else drawTitleCompact(lay.plan);
   }
   else if(state==='countdown'){
     const n=Math.ceil(countdown);
-    if(n>=1){
-      drawCenterBig(String(n),Math.floor(rows*0.22),4,2,(r,m)=>'#ffd23f');
-    }
+    if(n>=1) drawFittedBig(String(n),Math.floor(rows*0.22),4,2,()=>'#ffd23f');
   }
   else if(state==='race' && raceTime<1.2){
-    drawCenterBig('GO!',Math.floor(rows*0.22),4,2,(r,m)=>'#55ff88');
+    drawFittedBig('GO!',Math.floor(rows*0.22),4,2,()=>'#55ff88');
   }
   else if(state==='finish'){
-    ctx.fillStyle='rgba(4,6,10,0.6)'; ctx.fillRect(0,0,W,H);
-    drawCenterBig('FINISH',Math.floor(rows*0.1),2,1,(r,n)=>r<n/2?'#ffd23f':'#ff9a2a');
-    const rk=ranking(), cx=W/2, y0=Math.floor(rows*0.1+8)*HCH;
-    text(t('finishMsg',ord(player.place)),cx,y0,player.place===1?'#ffd23f':'#fff','center',HFS*1.4);
-    for(let i=0;i<rk.length;i++){
-      const c=rk[i];
-      const line=`${i+1}. ${c.name.padEnd(8)} ${c.finished?fmtTime(c.finishTime):t('racing')}`;
-      text(line,cx,y0+HCH*(3+i*1.3),c.color,'center');
-    }
-    if(((performance.now()/500)|0)%2===0) text(t('again'),cx,y0+HCH*11,'#fff','center',HFS*1.2);
+    const again=touchUi?t('againTouch'):t('again');
+    if(finishLegacyFits(again)) drawFinishLegacy(again);
+    else drawFinishCompact(again);
   }
   if(paused){
     ctx.fillStyle='rgba(4,6,10,0.5)'; ctx.fillRect(0,0,W,H);
-    text(t('paused'),W/2,H*0.4,'#fff','center',HFS*2.4);
+    text(t('paused'),W/2,Math.min(H*0.4, (H-bottomPad())*0.45),'#fff','center',HFS*2.4);
   }
 }
 
@@ -1269,6 +1561,8 @@ function drawFps(){
   text(Math.round(1000/Math.max(1,fpsEma))+' FPS ('+fpsEma.toFixed(1)+' ms)   '+t('fpsLine',ZOOM_CSS.toFixed(2),t(QUALITY[qIdx].name),FS_BASE,chunks.size),W/2,HCH*0.5,'#9aa3bd','center');
 }
 function render(){
+  syncTouchChrome();
+  refreshFooterPad();
   ctx.fillStyle='#07080c'; ctx.fillRect(0,0,W,H);
   shakeX=(Math.random()*2-1)*shake*6*DPR; shakeY=(Math.random()*2-1)*shake*6*DPR;
   drawTerrain();
@@ -1323,7 +1617,11 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyP' && (state==='race'||state==='countdown')) paused=!paused;
 });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
-addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
+addEventListener('blur',()=>{
+  for(const k in keys) keys[k]=false;
+  for(const k in touchHold) touchHold[k]=false;
+  for(const btn of document.querySelectorAll('#touch button.on')) btn.classList.remove('on');
+});
 
 let last=performance.now();
 let showFps=false, autoQuality=true, fpsEma=16, slowFrames=0;
@@ -1346,7 +1644,322 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+// ---------- On-screen controls for touch / pointer: coarse ----------
+const HOLD_CODE={left:'ArrowLeft',right:'ArrowRight',brake:'ArrowDown'};
+const TAP_CODE={fire:'Space',mine:'KeyX',nitro:'ShiftLeft'};
+const STEER_KEY='asciiracing.steer';
+const TILT_DEAD=6, TILT_FULL=28;
+let chromeSig='', lastTouchAt=0;
+let steerPref=loadSteerPref();
+let tiltLive=false, tiltDenied=false, tiltTold=false, tiltListening=false;
+let tiltTarget=0, tiltSteer=0;
+
+function loadSteerPref(){
+  try{
+    const v=localStorage.getItem(STEER_KEY);
+    if(v==='tilt'||v==='arrows') return v;
+  }catch(e){}
+  return 'tilt';
+}
+function saveSteerPref(){
+  try{ localStorage.setItem(STEER_KEY, steerPref); }catch(e){}
+}
+
+// Screen angle is clockwise from the natural orientation. iOS window.orientation is the other way.
+function screenAngle(){
+  const so=typeof screen!=='undefined' && screen.orientation;
+  if(so && typeof so.angle==='number' && !Number.isNaN(so.angle)) return ((so.angle%360)+360)%360;
+  const o=typeof window.orientation==='number'?window.orientation:0;
+  if(o===90) return 270;
+  if(o===-90) return 90;
+  if(o===180||o===-180) return 180;
+  return 0;
+}
+
+// Left/right roll of the screen, in degrees. Portrait uses gamma. Landscape swaps in beta.
+function rollDegrees(beta, gamma){
+  if(typeof gamma!=='number' || Number.isNaN(gamma)) return null;
+  const b=typeof beta==='number' && !Number.isNaN(beta) ? beta : 0;
+  const angle=screenAngle();
+  if(angle===90) return b;
+  if(angle===270) return -b;
+  if(angle===180) return -gamma;
+  return gamma;
+}
+
+function tiltToSteer(deg){
+  const mag=Math.abs(deg);
+  if(mag<=TILT_DEAD) return 0;
+  const sign=deg<0?-1:1;
+  return clamp(sign*(mag-TILT_DEAD)/(TILT_FULL-TILT_DEAD), -1, 1);
+}
+
+function onTilt(e){
+  if(e.gamma===0 && (e.beta==null || e.beta===0) && e.alpha==null) return;
+  const roll=rollDegrees(e.beta, e.gamma);
+  if(roll==null) return;
+  tiltLive=true;
+  tiltTarget=tiltToSteer(roll);
+}
+
+function startTiltListen(){
+  if(tiltListening) return;
+  window.addEventListener('deviceorientation', onTilt);
+  tiltListening=true;
+}
+
+function markTiltUnavailable(){
+  tiltDenied=true;
+  tiltSteer=0;
+  tiltTarget=0;
+  if(!tiltTold){ tiltTold=true; logMsg(t('tiltDenied')); }
+}
+
+// Must call requestPermission synchronously inside the tap that started it.
+function requestTiltFromGesture(){
+  const DOE=window.DeviceOrientationEvent;
+  if(!DOE){ markTiltUnavailable(); return Promise.resolve(false); }
+  if(typeof DOE.requestPermission==='function'){
+    let pending;
+    try{ pending=DOE.requestPermission(); }
+    catch(err){ markTiltUnavailable(); return Promise.resolve(false); }
+    return Promise.resolve(pending).then(res=>{
+      // iOS resolves granted or denied after the system dialog. Chrome can resolve
+      // "prompt" and still deliver readings, so only an explicit denial locks arrows.
+      if(res==='denied'){ markTiltUnavailable(); return false; }
+      tiltDenied=false;
+      startTiltListen();
+      return true;
+    }, ()=>{ markTiltUnavailable(); return false; });
+  }
+  startTiltListen();
+  return Promise.resolve(true);
+}
+
+function armTilt(){
+  if(steerPref!=='tilt' || tiltDenied) return;
+  const DOE=window.DeviceOrientationEvent;
+  if(!DOE){ tiltDenied=true; return; }
+  if(typeof DOE.requestPermission==='function') return;
+  startTiltListen();
+}
+
+function usingArrows(){
+  return steerPref==='arrows' || tiltDenied || !tiltLive;
+}
+
+function smoothTilt(dt){
+  const goal=(!tiltLive || usingArrows()) ? 0 : tiltTarget;
+  const k=1-Math.exp(-Math.max(0, dt)*12);
+  tiltSteer+=(goal-tiltSteer)*k;
+  if(tiltSteer>1) tiltSteer=1;
+  else if(tiltSteer<-1) tiltSteer=-1;
+  if(Math.abs(tiltSteer)<0.01) tiltSteer=0;
+}
+
+// Keyboard gas, brake and steering stay digital. Touch devices accelerate on their own.
+function playerControl(){
+  const keySteer=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0);
+  const keyThr=(keys.ArrowUp||keys.KeyW)?1:0;
+  const keyBrake=(keys.ArrowDown||keys.KeyS)?1:0;
+  if(!touchUi) return {steer:keySteer, thr:keyThr, brake:keyBrake};
+  let steer=keySteer;
+  if(!steer){
+    steer=usingArrows()
+      ? (touchHold.ArrowRight?1:0)-(touchHold.ArrowLeft?1:0)
+      : tiltSteer;
+  }
+  const brake=(keyBrake||touchHold.ArrowDown)?1:0;
+  // The title demo does not roll away before Play. Keyboard gas still forces the throttle.
+  const thr=keyThr ? 1 : (state==='race' && !brake ? 1 : 0);
+  return {steer, thr, brake};
+}
+
+function acceptPointer(e){
+  if(e.pointerType==='touch'){ lastTouchAt=performance.now(); return true; }
+  if(performance.now()-lastTouchAt<800) return false;
+  return e.button===0 || e.button===undefined;
+}
+
+function showIcon(id, on){
+  const el=document.getElementById(id);
+  if(el) el.hidden=!on;
+}
+
+function applyTouchLabels(){
+  const play=document.getElementById('btn-play');
+  if(play) play.textContent=t(state==='finish'?'touchAgain':'touchPlay');
+  const cap=document.querySelector('#btn-brake .cap');
+  if(cap) cap.textContent=t('touchBrake');
+  const labels={
+    'btn-left':'ariaLeft','btn-right':'ariaRight','btn-brake':'ariaBrake',
+    'btn-fire':'ariaFire','btn-mine':'ariaMine','btn-nitro':'ariaNitro',
+    'btn-pause':paused?'ariaResume':'ariaPause',
+    'btn-sound':muted?'ariaMuted':'ariaSound',
+    'btn-lang':'ariaLang',
+    'btn-steer':steerPref==='tilt'?'ariaSteerTilt':'ariaSteerArrows'
+  };
+  for(const id in labels){
+    const el=document.getElementById(id);
+    if(el) el.setAttribute('aria-label', t(labels[id]));
+  }
+  const steerBtn=document.getElementById('btn-steer');
+  if(steerBtn) steerBtn.setAttribute('aria-pressed', steerPref==='tilt'?'true':'false');
+  showIcon('ico-tilt', steerPref==='tilt');
+  showIcon('ico-arrows', steerPref!=='tilt');
+  showIcon('ico-pause', !paused);
+  showIcon('ico-resume', paused);
+  showIcon('ico-sound', !muted);
+  showIcon('ico-muted', muted);
+}
+
+function setBadge(id, n){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const s=String(Math.max(0, n|0));
+  if(el.textContent!==s) el.textContent=s;
+  el.classList.toggle('empty', n<=0);
+}
+
+function syncBadges(){
+  if(!touchUi || !player) return;
+  setBadge('badge-fire', player.missiles);
+  setBadge('badge-mine', player.mines);
+  setBadge('badge-nitro', player.nitroCount);
+}
+
+function syncTouchChrome(){
+  const root=document.getElementById('touch');
+  if(!root) return;
+  const arrows=usingArrows();
+  document.documentElement.classList.toggle('touch', touchUi);
+  root.setAttribute('aria-hidden', touchUi?'false':'true');
+  const play=document.getElementById('btn-play');
+  const showPlay=touchUi && (state==='title'||state==='finish');
+  if(play) play.hidden=!showPlay;
+  const left=document.getElementById('thumb-left');
+  if(left) left.hidden=!arrows;
+  syncBadges();
+  const sig=[touchUi?1:0, arrows?1:0, steerPref, I18N.lang, state, paused?1:0, muted?1:0, showPlay?1:0].join('|');
+  if(sig===chromeSig) return;
+  chromeSig=sig;
+  applyTouchLabels();
+}
+
+function releaseHold(btn, e){
+  if(!btn || btn._pid==null) return;
+  if(e && e.pointerId!==undefined && e.pointerId!==btn._pid) return;
+  btn._pid=null;
+  const code=HOLD_CODE[btn.dataset.hold];
+  if(code) touchHold[code]=false;
+  btn.classList.remove('on');
+}
+
+function initTouch(){
+  const root=document.getElementById('touch');
+  if(!root) return;
+  root.addEventListener('contextmenu', e=>e.preventDefault());
+  for(const btn of root.querySelectorAll('button[data-hold]')){
+    btn.addEventListener('pointerdown', e=>{
+      if(!acceptPointer(e)) return;
+      e.preventDefault();
+      btn._pid=e.pointerId;
+      try{ btn.setPointerCapture(e.pointerId); }catch(err){}
+      const code=HOLD_CODE[btn.dataset.hold];
+      if(code) touchHold[code]=true;
+      btn.classList.add('on');
+      ensureAudio();
+    });
+    btn.addEventListener('pointerup', e=>releaseHold(btn, e));
+    btn.addEventListener('pointercancel', e=>releaseHold(btn, e));
+    btn.addEventListener('lostpointercapture', e=>releaseHold(btn, e));
+  }
+  window.addEventListener('pointerup', e=>{
+    for(const btn of root.querySelectorAll('button[data-hold]')) releaseHold(btn, e);
+  });
+  window.addEventListener('pointercancel', e=>{
+    for(const btn of root.querySelectorAll('button[data-hold]')) releaseHold(btn, e);
+  });
+  for(const btn of root.querySelectorAll('button[data-tap]')){
+    const off=()=>btn.classList.remove('on');
+    btn.addEventListener('pointerdown', e=>{
+      if(!acceptPointer(e)) return;
+      e.preventDefault();
+      pressed[TAP_CODE[btn.dataset.tap]]=true;
+      btn.classList.add('on');
+      ensureAudio();
+    });
+    btn.addEventListener('pointerup', off);
+    btn.addEventListener('pointercancel', off);
+  }
+  // click, not pointerdown: iOS only treats click/touchend as the gesture for requestPermission.
+  document.getElementById('btn-play').addEventListener('click', e=>{
+    if(e.button!==undefined && e.button!==0) return;
+    ensureAudio();
+    const pending=steerPref==='tilt'?requestTiltFromGesture():null;
+    const go=()=>{
+      if(state==='title'||state==='finish') startRace();
+      chromeSig='';
+      syncTouchChrome();
+    };
+    if(pending && pending.then) pending.then(go, go);
+    else go();
+  });
+  document.getElementById('btn-steer').addEventListener('click', e=>{
+    if(e.button!==undefined && e.button!==0) return;
+    ensureAudio();
+    if(steerPref==='tilt'){
+      steerPref='arrows';
+      tiltSteer=0;
+      tiltTarget=0;
+      saveSteerPref();
+      chromeSig='';
+      syncTouchChrome();
+      return;
+    }
+    steerPref='tilt';
+    tiltDenied=false;
+    tiltTold=false;
+    saveSteerPref();
+    const pending=requestTiltFromGesture();
+    const done=()=>{ chromeSig=''; syncTouchChrome(); };
+    if(pending && pending.then) pending.then(done, done);
+    else done();
+  });
+  document.getElementById('btn-pause').addEventListener('pointerdown', e=>{
+    if(!acceptPointer(e)) return;
+    e.preventDefault();
+    if(state==='race'||state==='countdown') paused=!paused;
+    chromeSig='';
+    syncTouchChrome();
+  });
+  document.getElementById('btn-sound').addEventListener('pointerdown', e=>{
+    if(!acceptPointer(e)) return;
+    e.preventDefault();
+    ensureAudio();
+    muted=!muted;
+    chromeSig='';
+    syncTouchChrome();
+  });
+  document.getElementById('btn-lang').addEventListener('pointerdown', e=>{
+    if(!acceptPointer(e)) return;
+    e.preventDefault();
+    I18N.next();
+    logMsg(t('msgLang', I18N.names[I18N.lang]));
+    chromeSig='';
+    syncTouchChrome();
+  });
+  const coarse=window.matchMedia('(pointer: coarse)');
+  const onCoarse=()=>{ touchUi=coarse.matches; chromeSig=''; syncTouchChrome(); refreshFooterPad(); };
+  if(coarse.addEventListener) coarse.addEventListener('change', onCoarse);
+  else if(coarse.addListener) coarse.addListener(onCoarse);
+  armTilt();
+  syncTouchChrome();
+}
+
+initTouch();
 buildTrack();
 resize();
+refreshFooterPad();
 resetRace(false);       // modo demonstração na tela de título (IA corre sozinha)
 requestAnimationFrame(frame);
