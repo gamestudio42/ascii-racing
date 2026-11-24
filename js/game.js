@@ -612,9 +612,9 @@ let flashes=[], cars=[], player=null, missiles=[], mines=[], pickups=[], FX=[], 
 let camX=0, camY=0, shake=0, raceTime=0, countdown=0, finishedCount=0, paused=false, lastBeep=-1;
 const keys={}, pressed={};
 // Held by on-screen buttons. Merged with the keyboard so a keyup cannot cancel a finger.
-const touchHold={ArrowLeft:false,ArrowRight:false,ArrowUp:false,ArrowDown:false};
+const touchHold={ArrowLeft:false,ArrowRight:false,ArrowDown:false};
 let touchUi=window.matchMedia('(pointer: coarse)').matches;
-let footerPx=0;
+let footerPx=0, topPx=0;
 
 const CAR_DEFS = [
   {name:'VOCÊ',   color:'#00e5ff', skill:1.00},
@@ -907,8 +907,7 @@ function updateCar(c, dt){
   if(state==='countdown') ctl={steer:0,thr:0,brake:1};
   else if(c.auto) ctl=aiControl(c,dt);
   else {
-    ctl={steer:(keys.ArrowRight||keys.KeyD||touchHold.ArrowRight?1:0)-(keys.ArrowLeft||keys.KeyA||touchHold.ArrowLeft?1:0),
-         thr:(keys.ArrowUp||keys.KeyW||touchHold.ArrowUp)?1:0, brake:(keys.ArrowDown||keys.KeyS||touchHold.ArrowDown)?1:0};
+    ctl=playerControl();
     if(pressed.Space||pressed.KeyZ) fireMissile(c);
     if(pressed.KeyX||pressed.KeyE) dropMine(c);
     if(pressed.ShiftLeft||pressed.ShiftRight||pressed.KeyC) useNitro(c);
@@ -937,6 +936,7 @@ function updateCar(c, dt){
 }
 
 function update(dt){
+  smoothTilt(dt);
   if(state==='countdown'){
     countdown-=dt;
     const n=Math.ceil(countdown);
@@ -1161,12 +1161,25 @@ function text(str,x,y,col,align,size){
   ctx.fillStyle=col||'#fff'; ctx.fillText(str,x,y);
 }
 
-// Height of the on-screen control bar, in canvas pixels. Zero on a mouse/keyboard desktop.
+// Canvas pixels covered by the thumb controls (and the play button, when it is up).
 function bottomPad(){ return footerPx; }
 function refreshFooterPad(){
-  const el=document.getElementById('touch');
-  if(!touchUi||!el){ footerPx=0; return; }
-  footerPx=el.getBoundingClientRect().height*(W/Math.max(1,innerWidth));
+  const scale=W/Math.max(1, innerWidth);
+  if(!touchUi){ footerPx=0; topPx=0; return; }
+  const bar=document.getElementById('touch-top');
+  if(bar){
+    const r=bar.getBoundingClientRect();
+    topPx=Math.max(0, r.bottom)*scale;
+  } else topPx=0;
+  let top=innerHeight;
+  for(const id of ['thumb-right','thumb-left','btn-play']){
+    const el=document.getElementById(id);
+    if(!el || el.hidden) continue;
+    const r=el.getBoundingClientRect();
+    if(r.width<1 || r.height<1) continue;
+    top=Math.min(top, r.top);
+  }
+  footerPx=top<innerHeight ? (innerHeight-top)*scale+16*scale : 0;
 }
 
 function drawHUD(){
@@ -1181,9 +1194,9 @@ function drawHUD(){
     const c=rk[i];
     text(`${i+1}. ${c.name}${c.finished?' ✓':''}`,pad,pad*0.6+HCH*(4+i),c.color);
   }
-  // minimapa
+  // minimapa. Sits under the touch settings when those icons are in the top corner.
   if(miniCanvas){
-    const mx=W-MW-pad, my=pad*0.6;
+    const mx=W-MW-pad, my=touchUi?Math.max(pad*0.6, topPx+4*DPR):pad*0.6;
     ctx.globalAlpha=0.9; ctx.drawImage(miniCanvas,mx,my); ctx.globalAlpha=1;
     ctx.font=`bold ${HFS}px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle';
     for(const c of cars){
@@ -1197,7 +1210,7 @@ function drawHUD(){
     text(logMsgs[i].t,W-pad,my0()+HCH*i,'#ffb347','right');
   }
   ctx.globalAlpha=1;
-  // Health and items. Lifted above the touch bar when that bar is on screen.
+  // Health and items. Lifted above the thumb controls when they cover the canvas.
   const lift=bottomPad();
   const by=H-lift-HCH*4.2;
   const hpN=Math.round(player.hp/5);
@@ -1218,7 +1231,7 @@ function drawHUD(){
   text(fireK,pad,by+HCH,'#ff5555'); text(t('missiles'),lx,by+HCH,'#ff5555'); text('x'+player.missiles,cxn,by+HCH,'#fff');
   text(mineK,pad,by+HCH*2,'#ffa030'); text(t('mines'),lx,by+HCH*2,'#ffa030'); text('x'+player.mines,cxn,by+HCH*2,'#fff');
   text(nitroK,pad,by+HCH*3,'#33e0ff'); text(t('nitro'),lx,by+HCH*3,'#33e0ff'); text('x'+player.nitroCount+(player.nitro>0?'  ▶▶▶':''),cxn,by+HCH*3,'#fff');
-  // Speed sits on the same row as before when the touch bar is hidden.
+  // Speed stays on the old row when the thumb controls are hidden.
   text(`${Math.round(player.speed*0.4)} km/h`,W-pad,by+HCH*1.8,'#fff','right');
   // contra-mão
   if(state==='race' && player.dead<=0 && player.speed>90){
@@ -1228,7 +1241,10 @@ function drawHUD(){
   }
   if(player.dead>0) text(t('destroyed'),W/2,H*0.25,'#ff4d4d','center',HFS*1.6);
 }
-function my0(){ return HCW*2*0.6+MH+HCH; }
+function my0(){
+  const miniTop=touchUi?Math.max(HCW*2*0.6, topPx+4*DPR):HCW*2*0.6;
+  return miniTop+MH+HCH;
+}
 
 function drawCenterBig(str,row,sx,sy,colorFn){
   const cols=Math.floor(W/HCW);
@@ -1297,8 +1313,9 @@ function spacedWords(s){ return s.split(' ').map(w=>w.split('').join(' ')).join(
 
 function titleContent(){
   const row=(k,a)=>k+' '+'.'.repeat(Math.max(3,22-k.length))+' '+a;
+  const steerWord=usingArrows()?t('touchArrows'):t('touchTilt');
   const pairs=touchUi
-    ? [[t('touchDrive'),t('ctrlDrive')],[t('touchFire'),t('ctrlMissile')],[t('touchMine'),t('ctrlMine')],[t('touchNitro'),t('ctrlNitro')]]
+    ? [[steerWord+' / '+t('touchAuto')+' / '+t('touchBrake'),t('ctrlDrive')],[t('touchFire'),t('ctrlMissile')],[t('touchMine'),t('ctrlMine')],[t('touchNitro'),t('ctrlNitro')]]
     : [[t('keyArrows')+' / WASD',t('ctrlDrive')],[t('keySpace'),t('ctrlMissile')],['X',t('ctrlMine')],['SHIFT',t('ctrlNitro')]];
   return {
     pairs,
@@ -1363,7 +1380,7 @@ function layoutTitle(c, scale){
   const limit=H-bottomPad()-pad;
   if(bigWidth('RACING',1)*cw>maxW||bigWidth('ASCII',1)*cw>maxW) return {ok:false,blocks:[]};
   const blocks=[];
-  let y=pad;
+  let y=touchUi?Math.max(pad, topPx+pad*0.2):pad;
   const gap=k=>{ y+=Math.round(ch*k); };
   const addBig=(str,colorFn)=>{
     blocks.push({type:'big',str,y,colorFn,cw,ch,fs,h:5*ch});
@@ -1405,7 +1422,7 @@ function layoutTitle(c, scale){
 
 let menuSig='', menuCache=null;
 function titleLayout(){
-  const sig=[touchUi?1:0, I18N.lang, W, H, Math.round(footerPx), HFS, HCW, HCH].join('|');
+  const sig=[touchUi?1:0, usingArrows()?1:0, I18N.lang, W, H, Math.round(footerPx), Math.round(topPx), HFS, HCW, HCH].join('|');
   if(menuSig===sig && menuCache) return menuCache;
   menuSig=sig;
   const content=titleContent();
@@ -1413,7 +1430,7 @@ function titleLayout(){
   let plan=null;
   if(!legacy){
     let fallback=null;
-    for(let scale=1; scale>=0.5; scale=Math.round((scale-0.06)*100)/100){
+    for(let scale=1; scale>=0.4; scale=Math.round((scale-0.06)*100)/100){
       const next=layoutTitle(content, scale);
       if(next.blocks && next.blocks.length) fallback=next;
       if(next.ok){ plan=next; break; }
@@ -1428,9 +1445,11 @@ function drawTitleCompact(plan){
   if(!plan) return;
   ctx.fillStyle='rgba(4,6,10,0.62)'; ctx.fillRect(0,0,W,H);
   const shift=plan.ok?plan.shift:0;
+  const limit=H-bottomPad();
   const blinkOn=((performance.now()/500)|0)%2===0;
   for(const b of plan.blocks){
     const y=b.y+shift;
+    if(y+(b.h||0)>limit) continue;
     if(b.type==='big'){
       const width=bigWidth(b.str,1)*b.cw;
       paintBigAt(b.str,(W-width)/2,y,1,1,b.colorFn,b.cw,b.ch,b.fs);
@@ -1471,7 +1490,7 @@ function drawFinishCompact(again){
   ctx.fillStyle='rgba(4,6,10,0.6)'; ctx.fillRect(0,0,W,H);
   const rk=ranking();
   let chosen=null;
-  for(let scale=1; scale>=0.5; scale=Math.round((scale-0.06)*100)/100){
+  for(let scale=1; scale>=0.4; scale=Math.round((scale-0.06)*100)/100){
     const fs=Math.max(8, Math.round(HFS*scale));
     const ch=Math.ceil(fs*1.2);
     ctx.font=`bold ${fs}px ${FONT}`;
@@ -1508,6 +1527,7 @@ function drawFinishCompact(again){
   const blinkOn=((performance.now()/500)|0)%2===0;
   for(const l of chosen.lines){
     if(l.blink && !blinkOn) continue;
+    if(l.y+shift>chosen.limit) continue;
     text(l.str,W/2,l.y+shift,l.color,'center',l.fs);
   }
 }
@@ -1600,7 +1620,7 @@ addEventListener('keyup',e=>{ keys[e.code]=false; });
 addEventListener('blur',()=>{
   for(const k in keys) keys[k]=false;
   for(const k in touchHold) touchHold[k]=false;
-  for(const btn of document.querySelectorAll('#pad button.on')) btn.classList.remove('on');
+  for(const btn of document.querySelectorAll('#touch button.on')) btn.classList.remove('on');
 });
 
 let last=performance.now();
@@ -1625,9 +1645,135 @@ function frame(now){
 }
 
 // ---------- On-screen controls for touch / pointer: coarse ----------
-const HOLD_CODE={left:'ArrowLeft',right:'ArrowRight',gas:'ArrowUp',brake:'ArrowDown'};
+const HOLD_CODE={left:'ArrowLeft',right:'ArrowRight',brake:'ArrowDown'};
 const TAP_CODE={fire:'Space',mine:'KeyX',nitro:'ShiftLeft'};
+const STEER_KEY='asciiracing.steer';
+const TILT_DEAD=6, TILT_FULL=28;
 let chromeSig='', lastTouchAt=0;
+let steerPref=loadSteerPref();
+let tiltLive=false, tiltDenied=false, tiltTold=false, tiltListening=false;
+let tiltTarget=0, tiltSteer=0;
+
+function loadSteerPref(){
+  try{
+    const v=localStorage.getItem(STEER_KEY);
+    if(v==='tilt'||v==='arrows') return v;
+  }catch(e){}
+  return 'tilt';
+}
+function saveSteerPref(){
+  try{ localStorage.setItem(STEER_KEY, steerPref); }catch(e){}
+}
+
+// Screen angle is clockwise from the natural orientation. iOS window.orientation is the other way.
+function screenAngle(){
+  const so=typeof screen!=='undefined' && screen.orientation;
+  if(so && typeof so.angle==='number' && !Number.isNaN(so.angle)) return ((so.angle%360)+360)%360;
+  const o=typeof window.orientation==='number'?window.orientation:0;
+  if(o===90) return 270;
+  if(o===-90) return 90;
+  if(o===180||o===-180) return 180;
+  return 0;
+}
+
+// Left/right roll of the screen, in degrees. Portrait uses gamma. Landscape swaps in beta.
+function rollDegrees(beta, gamma){
+  if(typeof gamma!=='number' || Number.isNaN(gamma)) return null;
+  const b=typeof beta==='number' && !Number.isNaN(beta) ? beta : 0;
+  const angle=screenAngle();
+  if(angle===90) return b;
+  if(angle===270) return -b;
+  if(angle===180) return -gamma;
+  return gamma;
+}
+
+function tiltToSteer(deg){
+  const mag=Math.abs(deg);
+  if(mag<=TILT_DEAD) return 0;
+  const sign=deg<0?-1:1;
+  return clamp(sign*(mag-TILT_DEAD)/(TILT_FULL-TILT_DEAD), -1, 1);
+}
+
+function onTilt(e){
+  if(e.gamma===0 && (e.beta==null || e.beta===0) && e.alpha==null) return;
+  const roll=rollDegrees(e.beta, e.gamma);
+  if(roll==null) return;
+  tiltLive=true;
+  tiltTarget=tiltToSteer(roll);
+}
+
+function startTiltListen(){
+  if(tiltListening) return;
+  window.addEventListener('deviceorientation', onTilt);
+  tiltListening=true;
+}
+
+function markTiltUnavailable(){
+  tiltDenied=true;
+  tiltSteer=0;
+  tiltTarget=0;
+  if(!tiltTold){ tiltTold=true; logMsg(t('tiltDenied')); }
+}
+
+// Must call requestPermission synchronously inside the tap that started it.
+function requestTiltFromGesture(){
+  const DOE=window.DeviceOrientationEvent;
+  if(!DOE){ markTiltUnavailable(); return Promise.resolve(false); }
+  if(typeof DOE.requestPermission==='function'){
+    let pending;
+    try{ pending=DOE.requestPermission(); }
+    catch(err){ markTiltUnavailable(); return Promise.resolve(false); }
+    return Promise.resolve(pending).then(res=>{
+      // iOS resolves granted or denied after the system dialog. Chrome can resolve
+      // "prompt" and still deliver readings, so only an explicit denial locks arrows.
+      if(res==='denied'){ markTiltUnavailable(); return false; }
+      tiltDenied=false;
+      startTiltListen();
+      return true;
+    }, ()=>{ markTiltUnavailable(); return false; });
+  }
+  startTiltListen();
+  return Promise.resolve(true);
+}
+
+function armTilt(){
+  if(steerPref!=='tilt' || tiltDenied) return;
+  const DOE=window.DeviceOrientationEvent;
+  if(!DOE){ tiltDenied=true; return; }
+  if(typeof DOE.requestPermission==='function') return;
+  startTiltListen();
+}
+
+function usingArrows(){
+  return steerPref==='arrows' || tiltDenied || !tiltLive;
+}
+
+function smoothTilt(dt){
+  const goal=(!tiltLive || usingArrows()) ? 0 : tiltTarget;
+  const k=1-Math.exp(-Math.max(0, dt)*12);
+  tiltSteer+=(goal-tiltSteer)*k;
+  if(tiltSteer>1) tiltSteer=1;
+  else if(tiltSteer<-1) tiltSteer=-1;
+  if(Math.abs(tiltSteer)<0.01) tiltSteer=0;
+}
+
+// Keyboard gas, brake and steering stay digital. Touch devices accelerate on their own.
+function playerControl(){
+  const keySteer=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0);
+  const keyThr=(keys.ArrowUp||keys.KeyW)?1:0;
+  const keyBrake=(keys.ArrowDown||keys.KeyS)?1:0;
+  if(!touchUi) return {steer:keySteer, thr:keyThr, brake:keyBrake};
+  let steer=keySteer;
+  if(!steer){
+    steer=usingArrows()
+      ? (touchHold.ArrowRight?1:0)-(touchHold.ArrowLeft?1:0)
+      : tiltSteer;
+  }
+  const brake=(keyBrake||touchHold.ArrowDown)?1:0;
+  // The title demo does not roll away before Play. Keyboard gas still forces the throttle.
+  const thr=keyThr ? 1 : (state==='race' && !brake ? 1 : 0);
+  return {steer, thr, brake};
+}
 
 function acceptPointer(e){
   if(e.pointerType==='touch'){ lastTouchAt=performance.now(); return true; }
@@ -1635,37 +1781,77 @@ function acceptPointer(e){
   return e.button===0 || e.button===undefined;
 }
 
+function showIcon(id, on){
+  const el=document.getElementById(id);
+  if(el) el.hidden=!on;
+}
+
 function applyTouchLabels(){
-  const root=document.getElementById('touch');
-  if(!root) return;
-  for(const el of root.querySelectorAll('[data-i18n]')){
-    let key=el.dataset.i18n;
-    if(el.id==='btn-play') key=state==='finish'?'touchAgain':'touchPlay';
-    else if(el.id==='btn-pause') key=paused?'touchResume':'touchPause';
-    else if(el.id==='btn-sound') key=muted?'touchMuted':'touchSound';
-    el.textContent=t(key);
+  const play=document.getElementById('btn-play');
+  if(play) play.textContent=t(state==='finish'?'touchAgain':'touchPlay');
+  const cap=document.querySelector('#btn-brake .cap');
+  if(cap) cap.textContent=t('touchBrake');
+  const labels={
+    'btn-left':'ariaLeft','btn-right':'ariaRight','btn-brake':'ariaBrake',
+    'btn-fire':'ariaFire','btn-mine':'ariaMine','btn-nitro':'ariaNitro',
+    'btn-pause':paused?'ariaResume':'ariaPause',
+    'btn-sound':muted?'ariaMuted':'ariaSound',
+    'btn-lang':'ariaLang',
+    'btn-steer':steerPref==='tilt'?'ariaSteerTilt':'ariaSteerArrows'
+  };
+  for(const id in labels){
+    const el=document.getElementById(id);
+    if(el) el.setAttribute('aria-label', t(labels[id]));
   }
+  const steerBtn=document.getElementById('btn-steer');
+  if(steerBtn) steerBtn.setAttribute('aria-pressed', steerPref==='tilt'?'true':'false');
+  showIcon('ico-tilt', steerPref==='tilt');
+  showIcon('ico-arrows', steerPref!=='tilt');
+  showIcon('ico-pause', !paused);
+  showIcon('ico-resume', paused);
+  showIcon('ico-sound', !muted);
+  showIcon('ico-muted', muted);
+}
+
+function setBadge(id, n){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const s=String(Math.max(0, n|0));
+  if(el.textContent!==s) el.textContent=s;
+  el.classList.toggle('empty', n<=0);
+}
+
+function syncBadges(){
+  if(!touchUi || !player) return;
+  setBadge('badge-fire', player.missiles);
+  setBadge('badge-mine', player.mines);
+  setBadge('badge-nitro', player.nitroCount);
 }
 
 function syncTouchChrome(){
   const root=document.getElementById('touch');
   if(!root) return;
+  const arrows=usingArrows();
   document.documentElement.classList.toggle('touch', touchUi);
   root.setAttribute('aria-hidden', touchUi?'false':'true');
   const play=document.getElementById('btn-play');
   const showPlay=touchUi && (state==='title'||state==='finish');
   if(play) play.hidden=!showPlay;
-  const sig=[touchUi,I18N.lang,state,paused,muted,showPlay].join('|');
+  const left=document.getElementById('thumb-left');
+  if(left) left.hidden=!arrows;
+  syncBadges();
+  const sig=[touchUi?1:0, arrows?1:0, steerPref, I18N.lang, state, paused?1:0, muted?1:0, showPlay?1:0].join('|');
   if(sig===chromeSig) return;
   chromeSig=sig;
   applyTouchLabels();
 }
 
 function releaseHold(btn, e){
-  if(btn._pid==null) return;
+  if(!btn || btn._pid==null) return;
   if(e && e.pointerId!==undefined && e.pointerId!==btn._pid) return;
   btn._pid=null;
-  touchHold[HOLD_CODE[btn.dataset.hold]]=false;
+  const code=HOLD_CODE[btn.dataset.hold];
+  if(code) touchHold[code]=false;
   btn.classList.remove('on');
 }
 
@@ -1679,12 +1865,14 @@ function initTouch(){
       e.preventDefault();
       btn._pid=e.pointerId;
       try{ btn.setPointerCapture(e.pointerId); }catch(err){}
-      touchHold[HOLD_CODE[btn.dataset.hold]]=true;
+      const code=HOLD_CODE[btn.dataset.hold];
+      if(code) touchHold[code]=true;
       btn.classList.add('on');
       ensureAudio();
     });
     btn.addEventListener('pointerup', e=>releaseHold(btn, e));
     btn.addEventListener('pointercancel', e=>releaseHold(btn, e));
+    btn.addEventListener('lostpointercapture', e=>releaseHold(btn, e));
   }
   window.addEventListener('pointerup', e=>{
     for(const btn of root.querySelectorAll('button[data-hold]')) releaseHold(btn, e);
@@ -1704,17 +1892,45 @@ function initTouch(){
     btn.addEventListener('pointerup', off);
     btn.addEventListener('pointercancel', off);
   }
-  document.getElementById('btn-play').addEventListener('pointerdown', e=>{
-    if(!acceptPointer(e)) return;
-    e.preventDefault();
+  // click, not pointerdown: iOS only treats click/touchend as the gesture for requestPermission.
+  document.getElementById('btn-play').addEventListener('click', e=>{
+    if(e.button!==undefined && e.button!==0) return;
     ensureAudio();
-    if(state==='title'||state==='finish') startRace();
-    syncTouchChrome();
+    const pending=steerPref==='tilt'?requestTiltFromGesture():null;
+    const go=()=>{
+      if(state==='title'||state==='finish') startRace();
+      chromeSig='';
+      syncTouchChrome();
+    };
+    if(pending && pending.then) pending.then(go, go);
+    else go();
+  });
+  document.getElementById('btn-steer').addEventListener('click', e=>{
+    if(e.button!==undefined && e.button!==0) return;
+    ensureAudio();
+    if(steerPref==='tilt'){
+      steerPref='arrows';
+      tiltSteer=0;
+      tiltTarget=0;
+      saveSteerPref();
+      chromeSig='';
+      syncTouchChrome();
+      return;
+    }
+    steerPref='tilt';
+    tiltDenied=false;
+    tiltTold=false;
+    saveSteerPref();
+    const pending=requestTiltFromGesture();
+    const done=()=>{ chromeSig=''; syncTouchChrome(); };
+    if(pending && pending.then) pending.then(done, done);
+    else done();
   });
   document.getElementById('btn-pause').addEventListener('pointerdown', e=>{
     if(!acceptPointer(e)) return;
     e.preventDefault();
     if(state==='race'||state==='countdown') paused=!paused;
+    chromeSig='';
     syncTouchChrome();
   });
   document.getElementById('btn-sound').addEventListener('pointerdown', e=>{
@@ -1722,6 +1938,7 @@ function initTouch(){
     e.preventDefault();
     ensureAudio();
     muted=!muted;
+    chromeSig='';
     syncTouchChrome();
   });
   document.getElementById('btn-lang').addEventListener('pointerdown', e=>{
@@ -1729,12 +1946,14 @@ function initTouch(){
     e.preventDefault();
     I18N.next();
     logMsg(t('msgLang', I18N.names[I18N.lang]));
+    chromeSig='';
     syncTouchChrome();
   });
   const coarse=window.matchMedia('(pointer: coarse)');
   const onCoarse=()=>{ touchUi=coarse.matches; chromeSig=''; syncTouchChrome(); refreshFooterPad(); };
   if(coarse.addEventListener) coarse.addEventListener('change', onCoarse);
   else if(coarse.addListener) coarse.addListener(onCoarse);
+  armTilt();
   syncTouchChrome();
 }
 
