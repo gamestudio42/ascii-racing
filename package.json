@@ -1,0 +1,22 @@
+{
+  "name": "ascii-racing",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "description": "Checks and the GitHub Pages build for ASCII Racing. The game itself stays static.",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "pnpm test",
+    "test": "node --test tests/syntax.test.mjs tests/build.test.mjs",
+    "test:e2e": "playwright test",
+    "build": "node scripts/build-pages.mjs",
+    "preview": "python3 -m http.server 4173 --directory dist --bind 127.0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
